@@ -1,0 +1,58 @@
+name: Run Task
+run-name: Run Task (${{ inputs.task_name }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_name:
+        description: The task to run
+        type: choice
+        options:
+        - disassembleWithPatches
+        - writePatches
+        - testPatches
+      checkout_aliucord:
+        description: Checkout Aliucord
+        type: boolean
+
+jobs:
+  run-task:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: ${{ inputs.checkout_aliucord && '.github/workflows/run-task.yml' || null }}
+
+      - name: Checkout Aliucord
+        if: ${{ inputs.checkout_aliucord }}
+        run: |
+          rm -rf .git
+
+          git init -b main
+          git fetch "https://github.com/Aliucord/Aliucord" main
+          git reset --hard FETCH_HEAD
+
+      - name: Setup JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: 11
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Task
+        run: chmod +x gradlew && ./gradlew ":patches:${{ inputs.task_name }}"
+
+      - name: Push Changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f -- .
+          git commit -qm "task: ${{ inputs.task_name }}" || exit 0
+          git push -f "https://${{ secrets.TOKEN }}@github.com/${{ github.repository }}" main
